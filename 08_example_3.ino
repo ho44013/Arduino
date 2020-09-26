@@ -14,6 +14,8 @@ float timeout; // unit: us
 float dist_min, dist_max, dist_raw; // unit: mm
 unsigned long last_sampling_time; // unit: ms
 float scale; // used for pulse duration to distance conversion
+float last_dist_raw; // used if reading == 0
+
 
 void setup() {
 // initialize GPIO pins
@@ -43,6 +45,9 @@ void loop() {
 
 // get a distance reading from the USS
   dist_raw = USS_measure(PIN_TRIG,PIN_ECHO);
+  if (dist_raw == 0) {
+    dist_raw = last_dist_raw;
+  }
 
 // output the read value to the serial port
   Serial.print("Min:0,");
@@ -69,21 +74,21 @@ void loop() {
   
 // update last sampling time
   last_sampling_time += INTERVAL;
+
+// update last_distance
+  last_dist_raw = dist_raw;
 }
 
 // get a distance reading from USS. return value is in millimeter.
 float USS_measure(int TRIG, int ECHO)
 {
   float reading;
-  float past_reading;
   digitalWrite(TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG, LOW);
   reading = pulseIn(ECHO, HIGH, timeout) * scale; // unit: mm
   if(reading < dist_min || reading > dist_max) reading = 0.0; // return 0 when out of range.
-  if (reading == 0.0) return past_reading;
-  else return reading;
-  past_reading = reading;
+  return reading;
   // Pulse duration to distance conversion example (target distance = 17.3m)
   // - round trip distance: 34.6m
   // - expected pulse duration: 0.1 sec, or 100,000us
