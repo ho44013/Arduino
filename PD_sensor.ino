@@ -19,14 +19,16 @@
 
 
 // Distance filter
-#define _INTERVAL_DIST 30  // DELAY_MICROS * samples_num^2 의 값이 최종 거리측정 인터벌임. 넉넉하게 30ms 잡음.
 #define DELAY_MICROS  1500 // 필터에 넣을 샘플값을 측정하는 딜레이(고정값!)
 #define EMA_ALPHA 0.35    // EMA 필터 값을 결정하는 ALPHA 값. 작성자가 생각하는 최적값임.
 
 // Servo range 
 #define _DUTY_MIN 1330                 //[3028] 서보 각도 최소값
-#define _DUTY_NEU 1480   //[3038] 레일 수평 서보 펄스폭
-#define _DUTY_MAX 1630    //[3031] 서보 최대값
+#define _DUTY_NEU 1449   //[3038] 레일 수평 서보 펄스폭
+#define _DUTY_MAX 1630 //[3031] 서보 최대값
+
+// iterm windup 
+#define _ITERM_MAX 100
 
 // Servo speed control
 #define _SERVO_ANGLE 30   //[3030] servo angle limit 실제 서보의 동작크기
@@ -34,13 +36,14 @@
 #define _SERVO_SPEED 120            // [3040] 서보의 각속도(초당 각도 변화량)
 
 // Event periods
-#define _INTERVAL_DIST 20   //[3039]적외선 센서 측정 간격
+#define _INTERVAL_DIST 30  // DELAY_MICROS * samples_num^2 의 값이 최종 거리측정 인터벌임. 넉넉하게 30ms 잡음.
 #define _INTERVAL_SERVO 20         //[3046]서보갱신간격
 #define _INTERVAL_SERIAL 100       //[3030]시리얼 플로터 갱신간격
 
 // PID parameters
 #define _KP 1.3 // 비례 제어의 상수 값
-#define _KD 54 // 미분 제어의 상수 값
+#define _KD 54.1 // 미분 제어의 상수 값
+#define _KI 0.0035 // 적분 제어의 상수 값
 
 //////////////////////
 // global variables //
@@ -59,7 +62,7 @@ float last_result;
 float ema_dist=0;           
 float filtered_dist;       // 최종 측정된 거리값을 넣을 변수. loop()안에 filtered_dist = filtered_ir_distance(); 형태로 사용하면 됨.
 float samples_num = 3; 
-const float coE[] = {-0.0000082, 0.0044578, 0.6423447, 45.5626413};
+const float coE[] = {-0.0000042, 0.0024413, 0.8895852, 30.1729680};
 
 
 // Event periods
@@ -80,6 +83,7 @@ void setup() {
 // initialize GPIO pins for LED and attach servo 
   pinMode(PIN_LED,OUTPUT);           //[3030]LED를 연결[3027]
   myservo.attach(PIN_SERVO);  //[3039]servo를 연결
+ 
 
 // initialize global variables
   dist_min = _DIST_MIN;                      //[3030] 측정값의 최소값
@@ -93,8 +97,9 @@ void setup() {
 // move servo to neutral position
   myservo.writeMicroseconds(_DUTY_NEU);//[3030]서보를 레일이 수평이 되는 값으로 초기화
 
+
 // initialize serial port
-  Serial.begin(57600);  //[3039] 시리얼 모니터 속도 지정 
+  Serial.begin(115200);  //[3039] 시리얼 모니터 속도 지정 
 
 // convert angle speed into duty change per interval.
   duty_chg_per_interval =(float)(_DUTY_MAX - _DUTY_MIN) * (_SERVO_SPEED / _SERVO_ANGLE) * (_INTERVAL_SERVO / 1000.0); //[3039] 
@@ -108,8 +113,10 @@ _SERVO_ANGLE만큼 돌아가는데 걸리는 시간
   event_dist = false;
   event_servo = false;
   event_serial = false; 
- 
- 
+
+
+  pterm = dterm = iterm = 0;
+  
 }
   
 
@@ -149,7 +156,11 @@ void loop() {
     error_curr = dist_target - dist_ema; //[3034] 목표위치와 실제위치의 오차값 
     pterm = _KP * error_curr; //[3034]
     dterm = _KD * (error_curr - error_prev);
-    control = pterm + dterm;
+    iterm += _KI * error_curr;
+    // if (abs(iterm) > _ITERM_MAX) {
+    //  iterm = 0;
+    // }
+    control = pterm + dterm + iterm;
 
   // duty_target = f(duty_neutral, control)
     duty_target = duty_neutral + control; //[3034]
@@ -189,17 +200,21 @@ myservo.writeMicroseconds(duty_curr);//[3034]
   
   if(event_serial) {
     event_serial = false;               // [3030]
-    Serial.print("dist_ir:");
+    Serial.print("IR:");
     Serial.print(dist_ema);
-    Serial.print(",pterm:");
+    Serial.print(",T:");
+    Serial.print(dist_target);
+    Serial.print(",P:");
     Serial.print(map(pterm,-1000,1000,510,610));
-    Serial.print(",dterm:");
+    Serial.print(",D:");
     Serial.print(map(dterm,-1000,1000,510,610));
-    Serial.print(",duty_target:");
+    Serial.print(",I:");
+    Serial.print(map(iterm,-1000,1000,510,610));
+    Serial.print(",DTT:");
     Serial.print(map(duty_target,1000,2000,410,510));
-    Serial.print(",duty_curr:");
+    Serial.print(",DTC:");
     Serial.print(map(duty_curr,1000,2000,410,510));
-    Serial.println(",Min:100,Low:200,dist_target:255,High:310,Max:410");
+    Serial.println(",-G:245,+G:265,m:0,M:800");
   }
 }
 
