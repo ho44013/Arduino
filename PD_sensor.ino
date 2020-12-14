@@ -20,15 +20,16 @@
 
 // Distance filter
 #define DELAY_MICROS  1500 // 필터에 넣을 샘플값을 측정하는 딜레이(고정값!)
-#define EMA_ALPHA 0.35    // EMA 필터 값을 결정하는 ALPHA 값. 작성자가 생각하는 최적값임.
+#define EMA_ALPHA 0.38    // EMA 필터 값을 결정하는 ALPHA 값. 작성자가 생각하는 최적값임.
 
 // Servo range 
 #define _DUTY_MIN 1330                 //[3028] 서보 각도 최소값
-#define _DUTY_NEU 1449   //[3038] 레일 수평 서보 펄스폭
+#define _DUTY_NEU 1450   //[3038] 레일 수평 서보 펄스폭
 #define _DUTY_MAX 1630 //[3031] 서보 최대값
 
 // iterm windup 
 #define _ITERM_MAX 100
+#define _ITERM_MIN -100
 
 // Servo speed control
 #define _SERVO_ANGLE 30   //[3030] servo angle limit 실제 서보의 동작크기
@@ -54,7 +55,7 @@ Servo myservo;                      //[3030]servo
 
 // Distance sensor
 float dist_target; // location to send the ball
-float dist_raw, dist_ema;     //[3034]적외선센서로 측정한 거리값과 ema필터를 적용한 거리값
+float dist_raw, dist_ema, last_dist_cali;    //[3034]적외선센서로 측정한 거리값과 ema필터를 적용한 거리값
 int dist_min, dist_max;
 float last_result;
 
@@ -62,7 +63,7 @@ float last_result;
 float ema_dist=0;           
 float filtered_dist;       // 최종 측정된 거리값을 넣을 변수. loop()안에 filtered_dist = filtered_ir_distance(); 형태로 사용하면 됨.
 float samples_num = 3; 
-const float coE[] = {-0.0000042, 0.0024413, 0.8895852, 30.1729680};
+const float coE[] = {-0.0000043, 0.0027585, 0.6960441, 42.9829682};
 
 
 // Event periods
@@ -83,6 +84,7 @@ void setup() {
 // initialize GPIO pins for LED and attach servo 
   pinMode(PIN_LED,OUTPUT);           //[3030]LED를 연결[3027]
   myservo.attach(PIN_SERVO);  //[3039]servo를 연결
+  myservo.writeMicroseconds(_DUTY_NEU);//[3030]서보를 레일이 수평이 되는 값으로 초기화
  
 
 // initialize global variables
@@ -95,7 +97,7 @@ void setup() {
   duty_neutral = _DUTY_NEU;
 
 // move servo to neutral position
-  myservo.writeMicroseconds(_DUTY_NEU);//[3030]서보를 레일이 수평이 되는 값으로 초기화
+
 
 
 // initialize serial port
@@ -157,9 +159,12 @@ void loop() {
     pterm = _KP * error_curr; //[3034]
     dterm = _KD * (error_curr - error_prev);
     iterm += _KI * error_curr;
-    // if (abs(iterm) > _ITERM_MAX) {
-    //  iterm = 0;
-    // }
+    if (iterm > _ITERM_MAX) {
+      iterm = _ITERM_MAX;
+    }
+    if (iterm < _ITERM_MIN) {
+      iterm = _ITERM_MIN;
+    }
     control = pterm + dterm + iterm;
 
   // duty_target = f(duty_neutral, control)
@@ -220,7 +225,7 @@ myservo.writeMicroseconds(duty_curr);//[3034]
 
 float ir_distance(void){ // return value unit: mm
   float val; //[3031] 
-  const float coE[] = {-0.0000115, 0.0073845, -0.0875637, 80.6927580};
+  const float coE[] = {-0.0000027, 0.0013785, 0.9746601, 28.3710336};
   float volt = float(analogRead(PIN_IR)); //[3031]
   val = ((6762.0/(volt-9.0))-4.0) * 10.0; //[3031]
   return val;
